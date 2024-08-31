@@ -75,8 +75,8 @@ configure_make_variant(
         "libcrypto.lib",
     ],
     out_shared_libs = [
-        "libssl-1_1-x64.dll",
-        "libcrypto-1_1-x64.dll",
+        "libssl-3-x64.dll",
+        "libcrypto-3-x64.dll",
     ],
     targets = MAKE_TARGETS,
     toolchain = "@rules_foreign_cc//toolchains:preinstalled_nmake_toolchain",
@@ -85,7 +85,7 @@ configure_make_variant(
 
 configure_make(
     name = "openssl_default",
-    configure_command = "config",
+    configure_command = "Configure",
     configure_in_place = True,
     configure_options = CONFIGURE_OPTIONS,
     env = select({
@@ -102,14 +102,15 @@ configure_make(
     out_binaries = ["openssl"],
     # Note that for Linux builds, libssl must come before libcrypto on the linker command-line.
     # As such, libssl must be listed before libcrypto
+    out_lib_dir = "lib64",
     out_shared_libs = select({
         "@platforms//os:macos": [
-            "libssl.1.1.dylib",
-            "libcrypto.1.1.dylib",
+            "libssl.3.dylib",
+            "libcrypto.3.dylib",
         ],
         "//conditions:default": [
-            "libssl.so.1.1",
-            "libcrypto.so.1.1",
+            "libssl.so.3",
+            "libcrypto.so.3",
         ],
     }),
     targets = MAKE_TARGETS,
