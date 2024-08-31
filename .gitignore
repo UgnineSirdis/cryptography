@@ -32,7 +32,6 @@
 *.app
 
 # Bazel
-
 bazel-bin
 bazel-cryptography
 bazel-out
