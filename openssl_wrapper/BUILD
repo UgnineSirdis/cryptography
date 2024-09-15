@@ -8,3 +8,16 @@ cc_library(
     strip_include_prefix = "include",
     visibility = ["//visibility:public"],
 )
+
+cc_library(
+    name = "impl",
+    srcs = [
+        "impl/error.cpp",
+        "impl/helpers.h"
+    ],
+    deps = [
+        "@openssl//:openssl",
+        ":include",
+    ],
+    visibility = ["//visibility:public"],
+)

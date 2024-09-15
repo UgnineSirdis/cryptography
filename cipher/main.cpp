@@ -15,6 +15,7 @@
 #include <openssl/err.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
+#include <openssl/ossl_typ.h>
 
 class TOpenSslObjectFree {
 public:
@@ -34,33 +35,9 @@ public:
 using TCipherCtxPtr = std::unique_ptr<EVP_CIPHER_CTX, TOpenSslObjectFree>;
 using TBioPtr = std::unique_ptr<BIO, TOpenSslObjectFree>;
 
-std::string GetLastOpenSslError() {
-    TBioPtr bio(BIO_new(BIO_s_mem()));
-    ERR_print_errors(bio.get());
-    char* buf;
-    size_t len = BIO_get_mem_data(bio.get(), &buf);
-    std::string ret(buf, len);
-    return ret;
-}
-
-struct TOpenSslLastError : public TOpenSslError {
-    TOpenSslLastError(int errorCode, const char* action = nullptr)
-        : TOpenSslError(GetErrorText(errorCode, action))
-    {}
-
-    static std::string GetErrorText(int errorCode, const char* action) {
-        std::stringstream result;
-        if (action) {
-            result << action << ". ";
-        }
-        result << "Code " << errorCode << ": " << GetLastOpenSslError();
-        return result.str();
-    }
-};
-
 void OpensslCheckErrorAndThrow(int callResult, const char* action) {
     if (callResult <= 0) {
-        throw TOpenSslLastError(callResult, action);
+        throw NOpenSsl::TOpenSslLastError(callResult, action);
     }
 }
 
@@ -101,7 +78,7 @@ public:
         , Dst(dst)
     {
         if (!Ctx) {
-            throw TOpenSslLastError(0);
+            throw NOpenSsl::TOpenSslLastError(0);
         }
 
         OpensslCheckErrorAndThrow(EVP_EncryptInit_ex(Ctx.get(), EVP_aes_256_gcm(), nullptr, &Key[0], &IV[0]), "EVP_EncryptInit_ex");
@@ -152,7 +129,7 @@ public:
         , Dst(dst)
     {
         if (!Ctx) {
-            throw TOpenSslLastError(0);
+            throw NOpenSsl::TOpenSslLastError(0);
         }
 
         OpensslCheckErrorAndThrow(EVP_DecryptInit_ex(Ctx.get(), EVP_aes_256_gcm(), nullptr, &Key[0], &IV[0]), "EVP_DecryptInit_ex");
