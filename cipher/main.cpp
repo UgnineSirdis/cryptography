@@ -3,10 +3,13 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <memory>
 #include <vector>
+
+#include <openssl_wrapper/error.h>
 
 #include <openssl/evp.h>
 #include <openssl/err.h>
@@ -39,10 +42,6 @@ std::string GetLastOpenSslError() {
     std::string ret(buf, len);
     return ret;
 }
-
-struct TOpenSslError : public std::runtime_error {
-    using std::runtime_error::runtime_error;
-};
 
 struct TOpenSslLastError : public TOpenSslError {
     TOpenSslLastError(int errorCode, const char* action = nullptr)

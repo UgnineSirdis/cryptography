@@ -1,5 +1,5 @@
 cc_binary(
     name = "cipher",
     srcs = ["main.cpp"],
-    deps = ["@openssl//:openssl"],
+    deps = ["@openssl//:openssl", "//openssl_wrapper:include"],
 )
