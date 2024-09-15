@@ -38,7 +38,7 @@ public:
     }
 
     size_t GetKeySize() const override {
-        return EVP_CIPHER_CTX_get_key_length(Ctx.get());
+        return EVP_CIPHER_CTX_key_length(Ctx.get());
     }
 
     void SetKey(const std::vector<unsigned char>& key) override {
@@ -46,7 +46,7 @@ public:
     }
 
     size_t GetIVSize() const override {
-        return EVP_CIPHER_CTX_get_iv_length(Ctx.get());
+        return EVP_CIPHER_CTX_iv_length(Ctx.get());
     }
 
     void SetIV(const std::vector<unsigned char>& iv) override {
@@ -71,7 +71,11 @@ public:
 
     std::vector<unsigned char> GetTag() override {
         std::vector<unsigned char> result;
+#if __OPENSSL_VERSION__ == 1
+        int len = 16;
+#elif __OPENSSL_VERSION__ == 3
         int len = EVP_CIPHER_CTX_get_tag_length(Ctx.get());
+#endif
         result.resize(len);
         OpensslCheckErrorAndThrow(EVP_CIPHER_CTX_ctrl(Ctx.get(), EVP_CTRL_GCM_GET_TAG, len, &result[0]), "EVP_CIPHER_CTX_ctrl");
         return result;
@@ -102,7 +106,7 @@ public:
 
         OpensslCheckErrorAndThrow(EVP_DecryptInit_ex(Ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr), "EVP_DecryptInit_ex");
 
-        BlockSize = EVP_CIPHER_CTX_get_block_size(Ctx.get());
+        BlockSize = EVP_CIPHER_CTX_block_size(Ctx.get());
     }
 
     void EnsureInit() {
@@ -123,7 +127,7 @@ public:
     }
 
     size_t GetKeySize() const override {
-        return EVP_CIPHER_CTX_get_key_length(Ctx.get());
+        return EVP_CIPHER_CTX_key_length(Ctx.get());
     }
 
     void SetKey(const std::vector<unsigned char>& key) override {
@@ -131,7 +135,7 @@ public:
     }
 
     size_t GetIVSize() const override {
-        return EVP_CIPHER_CTX_get_iv_length(Ctx.get());
+        return EVP_CIPHER_CTX_iv_length(Ctx.get());
     }
 
     void SetIV(const std::vector<unsigned char>& iv) override {
@@ -139,7 +143,11 @@ public:
     }
 
     size_t GetTagSize() const override {
+#if __OPENSSL_VERSION__ == 1
+        return 16;
+#elif __OPENSSL_VERSION__ == 3
         return EVP_CIPHER_CTX_get_tag_length(Ctx.get());
+#endif
     }
 
     void SetTag(const std::vector<unsigned char>& tag) override {

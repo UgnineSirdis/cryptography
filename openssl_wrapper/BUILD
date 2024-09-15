@@ -21,6 +21,9 @@ SOURCES = [
 cc_library(
     name = "impl-1.1.1t",
     srcs = SOURCES,
+    local_defines = [
+        "__OPENSSL_VERSION__=1",
+    ],
     deps = [
         "@openssl-1.1.1t//:openssl",
         ":include",
@@ -31,6 +34,9 @@ cc_library(
 cc_library(
     name = "impl-3.3.1",
     srcs = SOURCES,
+    local_defines = [
+        "__OPENSSL_VERSION__=3",
+    ],
     deps = [
         "@openssl-3.3.1//:openssl",
         ":include",
