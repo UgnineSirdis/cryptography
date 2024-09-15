@@ -3,20 +3,36 @@
 cc_library(
     name = "include",
     hdrs = [
-        "include/openssl_wrapper/error.h"
+        "include/openssl_wrapper/encryption_stream.h",
+        "include/openssl_wrapper/error.h",
+        "include/openssl_wrapper/random.h",
     ],
     strip_include_prefix = "include",
     visibility = ["//visibility:public"],
 )
 
+SOURCES = [
+    "impl/encryption_stream.cpp",
+    "impl/error.cpp",
+    "impl/helpers.h",
+    "impl/random.cpp",
+]
+
 cc_library(
-    name = "impl",
-    srcs = [
-        "impl/error.cpp",
-        "impl/helpers.h"
-    ],
+    name = "impl-1.1.1t",
+    srcs = SOURCES,
     deps = [
-        "@openssl//:openssl",
+        "@openssl-1.1.1t//:openssl",
+        ":include",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "impl-3.3.1",
+    srcs = SOURCES,
+    deps = [
+        "@openssl-3.3.1//:openssl",
         ":include",
     ],
     visibility = ["//visibility:public"],

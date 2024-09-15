@@ -1,6 +1,8 @@
 #pragma once
 #include <memory>
 
+#include <openssl_wrapper/error.h>
+
 #include <openssl/evp.h>
 #include <openssl/ossl_typ.h>
 
@@ -23,5 +25,11 @@ public:
 
 using TCipherCtxPtr = std::unique_ptr<EVP_CIPHER_CTX, TOpenSslObjectFree>;
 using TBioPtr = std::unique_ptr<BIO, TOpenSslObjectFree>;
+
+inline void OpensslCheckErrorAndThrow(int callResult, const char* action) {
+    if (callResult <= 0) {
+        throw NOpenSsl::TOpenSslLastError(callResult, action);
+    }
+}
 
 } // namespace NOpenSsl

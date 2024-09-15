@@ -4,10 +4,23 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
 
 def openssl_repositories():
+    # old version
     maybe(
         http_archive,
-        name = "openssl",
-        build_file = Label("//openssl:BUILD.openssl.bazel"),
+        name = "openssl-1.1.1t",
+        build_file = Label("//openssl:BUILD.openssl-1.1.1t.bazel"),
+        sha256 = "b1270f044e36452e15d1f2e18b702691a240b0445080282f2c7daaea8704ec5e",
+        strip_prefix = "openssl-OpenSSL_1_1_1t",
+        urls = [
+            "https://github.com/openssl/openssl/archive/refs/tags/OpenSSL_1_1_1t.tar.gz",
+        ],
+    )
+
+    # current version
+    maybe(
+        http_archive,
+        name = "openssl-3.3.1",
+        build_file = Label("//openssl:BUILD.openssl-3.3.1.bazel"),
         sha256 = "777cd596284c883375a2a7a11bf5d2786fc5413255efab20c50d6ffe6d020b7e",
         strip_prefix = "openssl-3.3.1",
         urls = [
