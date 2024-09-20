@@ -4,20 +4,38 @@
 
 #include <openssl/evp.h>
 
+#if __OPENSSL_VERSION__ == 3
+#include <openssl/core_names.h>
+#include <openssl/params.h>
+#endif
+
+#include <iostream>
+#include <sstream>
+
 namespace NOpenSsl {
 
-class TAES256GCMEncryptionStream : public IEncryptionStream {
+const EVP_CIPHER* GetCipherByName(const std::string& cipherName) {
+    const EVP_CIPHER* cipher = EVP_get_cipherbyname(cipherName.c_str());
+    if (!cipher) {
+        std::stringstream ss;
+        ss << "Failed to get cipher \"" << cipherName << "\" by name";
+        throw TOpenSslError(ss.str());
+    }
+    return cipher;
+}
+
+class TEvpEncryptionStream : public IEncryptionStream {
 public:
-    TAES256GCMEncryptionStream(std::vector<unsigned char>* dst)
+    TEvpEncryptionStream(const std::string& cipherName, std::vector<unsigned char>* dst)
         : Ctx(EVP_CIPHER_CTX_new())
         , Dst(dst)
     {
         if (!Ctx) {
-            throw NOpenSsl::TOpenSslLastError(0);
+            throw TOpenSslLastError(0);
         }
 
         // Init without parameters
-        OpensslCheckErrorAndThrow(EVP_EncryptInit_ex(Ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr), "EVP_EncryptInit_ex");
+        OpensslCheckErrorAndThrow(EVP_EncryptInit_ex(Ctx.get(), GetCipherByName(cipherName), nullptr, nullptr, nullptr), "EVP_EncryptInit_ex");
     }
 
     void EnsureInit() {
@@ -69,17 +87,43 @@ public:
         DstSize += size_t(outLen);
     }
 
+#if __OPENSSL_VERSION__ == 1
     std::vector<unsigned char> GetTag() override {
         std::vector<unsigned char> result;
-#if __OPENSSL_VERSION__ == 1
         int len = 16;
-#elif __OPENSSL_VERSION__ == 3
-        int len = EVP_CIPHER_CTX_get_tag_length(Ctx.get());
-#endif
         result.resize(len);
-        OpensslCheckErrorAndThrow(EVP_CIPHER_CTX_ctrl(Ctx.get(), EVP_CTRL_GCM_GET_TAG, len, &result[0]), "EVP_CIPHER_CTX_ctrl");
+        OpensslCheckErrorAndThrow(EVP_CIPHER_CTX_ctrl(Ctx.get(), EVP_CTRL_AEAD_GET_TAG, len, &result[0]), "EVP_CIPHER_CTX_ctrl(EVP_CTRL_AEAD_GET_TAG)");
         return result;
     }
+#endif
+
+#if __OPENSSL_VERSION__ == 3
+    std::vector<unsigned char> GetTag() override {
+        //unsigned int tagLen = EVP_CIPHER_CTX_get_tag_length(Ctx.get()); // does not work for chacha20-poly1305
+
+        /*  // does not work for chacha20-poly1305
+        OSSL_PARAM tagLengthParam[] = {
+            OSSL_PARAM_uint(OSSL_CIPHER_PARAM_AEAD_TAGLEN, &tagLen),
+            OSSL_PARAM_END,
+        };
+        OpensslCheckErrorAndThrow(EVP_CIPHER_CTX_get_params(Ctx.get(), tagLengthParam), "EVP_CIPHER_CTX_get_params");
+        std::cerr << "Tag len: " << tagLen << std::endl;
+        */
+
+        unsigned int tagLen = 16;
+
+        std::vector<unsigned char> result;
+        result.resize(tagLen);
+
+        OSSL_PARAM tagParam[] = {
+            OSSL_PARAM_octet_string(OSSL_CIPHER_PARAM_AEAD_TAG, &result[0], result.size()),
+            OSSL_PARAM_END,
+        };
+        OpensslCheckErrorAndThrow(EVP_CIPHER_CTX_get_params(Ctx.get(), tagParam), "EVP_CIPHER_CTX_get_params");
+
+        return result;
+    }
+#endif
 
     size_t GetBytesWritten() const override {
         return DstSize;
@@ -94,17 +138,17 @@ public:
     bool Inited = false;
 };
 
-class TAES256GCMDecryptionStream : public NOpenSsl::IDecryptionStream {
+class TEvpDecryptionStream : public IDecryptionStream {
 public:
-    TAES256GCMDecryptionStream(std::vector<unsigned char>* dst)
+    TEvpDecryptionStream(const std::string& cipherName, std::vector<unsigned char>* dst)
         : Ctx(EVP_CIPHER_CTX_new())
         , Dst(dst)
     {
         if (!Ctx) {
-            throw NOpenSsl::TOpenSslLastError(0);
+            throw TOpenSslLastError(0);
         }
 
-        OpensslCheckErrorAndThrow(EVP_DecryptInit_ex(Ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr), "EVP_DecryptInit_ex");
+        OpensslCheckErrorAndThrow(EVP_DecryptInit_ex(Ctx.get(), GetCipherByName(cipherName), nullptr, nullptr, nullptr), "EVP_DecryptInit_ex");
 
         BlockSize = EVP_CIPHER_CTX_block_size(Ctx.get());
     }
@@ -151,7 +195,11 @@ public:
     }
 
     void SetTag(const std::vector<unsigned char>& tag) override {
+        EnsureInit();
         Tag = tag;
+
+        // Set expected tag
+        OpensslCheckErrorAndThrow(EVP_CIPHER_CTX_ctrl(Ctx.get(), EVP_CTRL_AEAD_SET_TAG, Tag.size(), &Tag[0]), "EVP_CIPHER_CTX_ctrl");
     }
 
     void Update(unsigned char* data, size_t size) override {
@@ -164,9 +212,6 @@ public:
 
     void Finalize() override {
         EnsureInit();
-
-        // Set expected tag
-        OpensslCheckErrorAndThrow(EVP_CIPHER_CTX_ctrl(Ctx.get(), EVP_CTRL_GCM_SET_TAG, 16, &Tag[0]), "EVP_CIPHER_CTX_ctrl");
 
         // Finalize
         int outLen = 0;
@@ -188,12 +233,12 @@ public:
     bool Inited = false;
 };
 
-std::shared_ptr<IEncryptionStream> CreateEncryptionStream(std::vector<unsigned char>* dst) {
-    return std::make_shared<TAES256GCMEncryptionStream>(dst);
+std::shared_ptr<IEncryptionStream> CreateEncryptionStream(const std::string& cipherName, std::vector<unsigned char>* dst) {
+    return std::make_shared<TEvpEncryptionStream>(cipherName, dst);
 }
 
-std::shared_ptr<IDecryptionStream> CreateDecryptionStream(std::vector<unsigned char>* dst) {
-    return std::make_shared<TAES256GCMDecryptionStream>(dst);
+std::shared_ptr<IDecryptionStream> CreateDecryptionStream(const std::string& cipherName, std::vector<unsigned char>* dst) {
+    return std::make_shared<TEvpDecryptionStream>(cipherName, dst);
 }
 
 } // namespace NOpenSsl

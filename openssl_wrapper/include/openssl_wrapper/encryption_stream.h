@@ -36,7 +36,7 @@ struct IDecryptionStream : public IEncryptionStreamBase {
     virtual void SetTag(const std::vector<unsigned char>& tag) = 0;
 };
 
-std::shared_ptr<IEncryptionStream> CreateEncryptionStream(std::vector<unsigned char>* dst);
-std::shared_ptr<IDecryptionStream> CreateDecryptionStream(std::vector<unsigned char>* dst);
+std::shared_ptr<IEncryptionStream> CreateEncryptionStream(const std::string& cipherName, std::vector<unsigned char>* dst);
+std::shared_ptr<IDecryptionStream> CreateDecryptionStream(const std::string& cipherName, std::vector<unsigned char>* dst);
 
 } // namespace NOpenSsl
