@@ -71,7 +71,7 @@ public:
         IV = iv;
     }
 
-    void Update(unsigned char* data, size_t size) override {
+    void Update(const unsigned char* data, size_t size) override {
         EnsureInit();
 
         int outLen = 0;
@@ -202,7 +202,7 @@ public:
         OpensslCheckErrorAndThrow(EVP_CIPHER_CTX_ctrl(Ctx.get(), EVP_CTRL_AEAD_SET_TAG, Tag.size(), &Tag[0]), "EVP_CIPHER_CTX_ctrl");
     }
 
-    void Update(unsigned char* data, size_t size) override {
+    void Update(const unsigned char* data, size_t size) override {
         EnsureInit();
 
         int outLen = 0;

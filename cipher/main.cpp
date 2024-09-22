@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <random>
 
 #include <openssl_wrapper/encryption_stream.h>
 #include <openssl_wrapper/error.h>
@@ -43,28 +44,34 @@ private:
 struct TParams {
     TParams(int argc, const char** argv) {
         if (argc >= 2) {
-            CipherName = argv[1];
+            for (int i = 1; i < argc; ++i) {
+                CipherNames.push_back(argv[i]);
+            }
+        } else {
+            CipherNames.push_back("AES-128-GCM");
+            CipherNames.push_back("AES-256-GCM");
+            CipherNames.push_back("ChaCha20-Poly1305");
         }
-
-        std::cerr << "CipherName: \"" << CipherName << "\"" << std::endl;
     }
 
-    std::string CipherName = "AES-128-GCM";
+    std::vector<std::string> CipherNames;
 };
 
-int main(int argc, const char** argv) {
-    std::cerr << "Cipher speed test program" << std::endl;
-    try {
-        TParams opts(argc, argv);
-        size_t gigabyte = 1024 * 1024 * 1024;
-        TTimeMeasurer genMeasurer("Data generation");
-        NOpenSsl::TRandomGeneratedBytes data(gigabyte);
-        genMeasurer.Stop(gigabyte);
-        std::vector<unsigned char> encryptedData(gigabyte + 1024);
-        std::vector<unsigned char> decryptedData(gigabyte + 1024);
+void GenerateRandomData(std::vector<unsigned char>& data, size_t size) {
+    NOpenSsl::TRandomGeneratedBytes r(size);
+    data.swap(r.Value);
+}
 
-        auto enc = NOpenSsl::CreateEncryptionStream(opts.CipherName, &encryptedData);
-        auto dec = NOpenSsl::CreateDecryptionStream(opts.CipherName, &decryptedData);
+void TestCipher(const std::string& cipherName, const std::vector<unsigned char>& data) {
+    try {
+        std::cerr << std::endl << "CipherName: \"" << cipherName << "\"" << std::endl;
+
+        const size_t dataSize = data.size();
+        std::vector<unsigned char> encryptedData(dataSize + 1024);
+        std::vector<unsigned char> decryptedData(dataSize + 1024);
+
+        auto enc = NOpenSsl::CreateEncryptionStream(cipherName, &encryptedData);
+        auto dec = NOpenSsl::CreateDecryptionStream(cipherName, &decryptedData);
 
         NOpenSsl::TRandomGeneratedBytes key(enc->GetKeySize());
         enc->SetKey(key.Value);
@@ -80,11 +87,11 @@ int main(int argc, const char** argv) {
 
         // Encryption
         TTimeMeasurer encMeasurer("Encryption");
-        enc->Update(&data.Value[0], data.Value.size());
+        enc->Update(&data[0], data.size());
         enc->Finalize();
         auto tag = enc->GetTag();
         std::cerr << "Tag length: " << tag.size() << std::endl;
-        encMeasurer.Stop(gigabyte);
+        encMeasurer.Stop(dataSize);
         std::cerr << "Bytes written: " << enc->GetBytesWritten() << std::endl;
 
         // Decryption
@@ -92,19 +99,19 @@ int main(int argc, const char** argv) {
         dec->Update(&encryptedData[0], enc->GetBytesWritten());
         dec->SetTag(tag);
         dec->Finalize();
-        decMeasurer.Stop(gigabyte);
+        decMeasurer.Stop(dataSize);
         std::cerr << "Bytes written: " << dec->GetBytesWritten() << std::endl;
 
         // Compare
         bool compareProblem = false;
-        if (dec->GetBytesWritten() != data.Value.size()) {
+        if (dec->GetBytesWritten() != data.size()) {
             throw std::runtime_error("Decrypted size is not equal to source data size");
         }
 
         // Compare uint64_t pieces
-        const size_t countInts = data.Value.size() / sizeof(uint64_t);
-        const uint64_t* srcValueUint64 = reinterpret_cast<uint64_t*>(&data.Value[0]);
-        const uint64_t* decValueUint64 = reinterpret_cast<uint64_t*>(&decryptedData[0]);
+        const size_t countInts = data.size() / sizeof(uint64_t);
+        const uint64_t* srcValueUint64 = reinterpret_cast<const uint64_t*>(&data[0]);
+        const uint64_t* decValueUint64 = reinterpret_cast<const uint64_t*>(&decryptedData[0]);
         for (size_t i = 0; i < countInts; ++i) {
             if (srcValueUint64[i] != decValueUint64[i]) {
                 std::cerr << "Decrypted data is not equal to source data. ui64 " << i << std::endl;
@@ -112,9 +119,9 @@ int main(int argc, const char** argv) {
             }
         }
 
-        for (size_t i = 0; i < data.Value.size() % sizeof(uint64_t); ++i) {
+        for (size_t i = 0; i < data.size() % sizeof(uint64_t); ++i) {
             size_t index = i + countInts * sizeof(uint64_t);
-            if (data.Value[index] != decryptedData[index]) {
+            if (data[index] != decryptedData[index]) {
                 std::cerr << "Decrypted data is not equal to source data. byte " << index << std::endl;
                 compareProblem = true;
             }
@@ -125,6 +132,24 @@ int main(int argc, const char** argv) {
             throw std::runtime_error("Results don't match");
         } else {
             std::cerr << "Results match" << std::endl;
+        }
+    } catch (const std::exception& ex) {
+        std::cerr << "Error: " << ex.what() << std::endl;
+    }
+}
+
+int main(int argc, const char** argv) {
+    std::cerr << "Cipher speed test program" << std::endl;
+    try {
+        TParams opts(argc, argv);
+        size_t gigabyte = 1024 * 1024 * 1024;
+        std::vector<unsigned char> data;
+        TTimeMeasurer genMeasurer("Data generation");
+        GenerateRandomData(data, gigabyte);
+        genMeasurer.Stop(gigabyte);
+
+        for (const std::string& cipherName : opts.CipherNames) {
+            TestCipher(cipherName, data);
         }
 
         return 0;

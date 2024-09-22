@@ -17,7 +17,7 @@ struct IEncryptionStreamBase {
     virtual void SetIV(const std::vector<unsigned char>& iv) = 0;
 
     // Encryption
-    virtual void Update(unsigned char* data, size_t size) = 0;
+    virtual void Update(const unsigned char* data, size_t size) = 0;
     virtual void Finalize() = 0;
 
     // How many bytes encrypted/decrypted
