@@ -22,6 +22,9 @@ $ ./bazel-bin/cipher/cipher-3.3.1 chacha20-poly1305
 
 $ ./bazel-bin/cipher/cipher-1.1.1t aes-128-gcm
 $ ./bazel-bin/cipher/cipher-3.3.1 aes-128-gcm
+
+# Test not authenticated encryption modes
+$ ./bazel-bin/cipher/cipher-1.1.1t AES-128-CTR AES-128-CBC --no-authenticated-encryption
 ```
 
 [Cipher names in openssl code](https://github.com/openssl/openssl/blob/master/crypto/objects/obj_dat.h#L1740)

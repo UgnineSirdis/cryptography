@@ -1,6 +1,7 @@
 #include <chrono>
 #include <cstddef>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -44,17 +45,53 @@ private:
 struct TParams {
     TParams(int argc, const char** argv) {
         if (argc >= 2) {
-            for (int i = 1; i < argc; ++i) {
-                CipherNames.push_back(argv[i]);
+            for (int i = 1; i < argc;) {
+                i = ProcessOption(i, argc, argv);
+                if (DisplayHelpAndExit) {
+                    break;
+                }
             }
         } else {
-            CipherNames.push_back("AES-128-GCM");
-            CipherNames.push_back("AES-256-GCM");
-            CipherNames.push_back("ChaCha20-Poly1305");
+            ApplyDefaultOptions();
         }
     }
 
+    int ProcessOption(int i, int argc, const char** argv) {
+        std::string opt(argv[i]);
+        if (opt.size() > 2 && opt[0] == '-') {
+            if (opt == "--no-authenticated-encryption") {
+                AuthenticatedEncryption = false;
+                return ++i;
+            } else if (opt == "-h" || opt == "--help") {
+                DisplayHelpAndExit = true;
+                return ++i;
+            } else {
+                std::stringstream ss;
+                ss << "Failed to parse option \"" << opt << "\"";
+                throw std::runtime_error(ss.str());
+            }
+        } else {
+            CipherNames.push_back(opt);
+            return ++i;
+        }
+    }
+
+    void ApplyDefaultOptions() {
+        CipherNames.push_back("AES-128-GCM");
+        CipherNames.push_back("AES-256-GCM");
+        CipherNames.push_back("ChaCha20-Poly1305");
+    }
+
+    void ShowHelp() {
+        std::cerr << "cipher <cipher-1> <cipher-2> ..." << std::endl;
+        std::cerr << std::endl;
+        std::cerr << "Options:" << std::endl;
+        std::cerr << "--no-authenticated-encryption: don't set and verify tag (for nonauthenticated encryption ciphers)" << std::endl;
+    }
+
     std::vector<std::string> CipherNames;
+    bool AuthenticatedEncryption = true;
+    bool DisplayHelpAndExit = false;
 };
 
 void GenerateRandomData(std::vector<unsigned char>& data, size_t size) {
@@ -62,7 +99,7 @@ void GenerateRandomData(std::vector<unsigned char>& data, size_t size) {
     data.swap(r.Value);
 }
 
-void TestCipher(const std::string& cipherName, const std::vector<unsigned char>& data) {
+void TestCipher(const TParams& opts, const std::string& cipherName, const std::vector<unsigned char>& data) {
     try {
         std::cerr << std::endl << "CipherName: \"" << cipherName << "\"" << std::endl;
 
@@ -89,15 +126,20 @@ void TestCipher(const std::string& cipherName, const std::vector<unsigned char>&
         TTimeMeasurer encMeasurer("Encryption");
         enc->Update(&data[0], data.size());
         enc->Finalize();
-        auto tag = enc->GetTag();
-        std::cerr << "Tag length: " << tag.size() << std::endl;
+        std::vector<unsigned char> tag;
+        if (opts.AuthenticatedEncryption) {
+            tag = enc->GetTag();
+            std::cerr << "Tag length: " << tag.size() << std::endl;
+        }
         encMeasurer.Stop(dataSize);
         std::cerr << "Bytes written: " << enc->GetBytesWritten() << std::endl;
 
         // Decryption
         TTimeMeasurer decMeasurer("Decryption");
         dec->Update(&encryptedData[0], enc->GetBytesWritten());
-        dec->SetTag(tag);
+        if (opts.AuthenticatedEncryption) {
+            dec->SetTag(tag);
+        }
         dec->Finalize();
         decMeasurer.Stop(dataSize);
         std::cerr << "Bytes written: " << dec->GetBytesWritten() << std::endl;
@@ -142,6 +184,10 @@ int main(int argc, const char** argv) {
     std::cerr << "Cipher speed test program" << std::endl;
     try {
         TParams opts(argc, argv);
+        if (opts.DisplayHelpAndExit) {
+            opts.ShowHelp();
+            return 0;
+        }
         size_t gigabyte = 1024 * 1024 * 1024;
         std::vector<unsigned char> data;
         TTimeMeasurer genMeasurer("Data generation");
@@ -149,7 +195,7 @@ int main(int argc, const char** argv) {
         genMeasurer.Stop(gigabyte);
 
         for (const std::string& cipherName : opts.CipherNames) {
-            TestCipher(cipherName, data);
+            TestCipher(opts, cipherName, data);
         }
 
         return 0;
