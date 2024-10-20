@@ -23,13 +23,15 @@ public:
         Begin = std::chrono::system_clock::now();
     }
 
-    void Stop(size_t bytes) {
+    void Stop(size_t bytes, bool silent = false) {
         End = std::chrono::system_clock::now();
 
-        auto d = GetDuration();
-        std::cerr << std::endl << Name << ":" << std::endl;
-        std::cerr << "Time (us): " << d.count() << std::endl;
-        std::cerr << "Speed (MB/s): " << (double(bytes) / d.count()) << std::endl;
+        if (!silent) {
+            auto d = GetDuration();
+            std::cerr << std::endl << Name << ":" << std::endl;
+            std::cerr << "Time (us): " << d.count() << std::endl;
+            std::cerr << "Speed (MB/s): " << (double(bytes) / d.count()) << std::endl;
+        }
     }
 
     std::chrono::microseconds GetDuration() const {
@@ -99,7 +101,137 @@ void GenerateRandomData(std::vector<unsigned char>& data, size_t size) {
     data.swap(r.Value);
 }
 
-void TestCipher(const TParams& opts, const std::string& cipherName, const std::vector<unsigned char>& data) {
+struct TCipherTime {
+    TCipherTime(std::chrono::microseconds enc, std::chrono::microseconds dec, size_t bytes)
+        : EncryptionTime(enc)
+        , EncryptionSpeedMbs(double(bytes) / enc.count())
+        , DecryptionTime(dec)
+        , DecryptionSpeedMbs(double(bytes) / dec.count())
+    {}
+
+    std::chrono::microseconds EncryptionTime;
+    double EncryptionSpeedMbs;
+    std::chrono::microseconds DecryptionTime;
+    double DecryptionSpeedMbs;
+};
+
+struct TCipherStats {
+    std::string CipherName;
+    std::vector<TCipherTime> Times;
+
+    TCipherStats(const std::string& cipherName)
+        : CipherName(cipherName)
+    {}
+
+    template <class T>
+    T Min(T TCipherTime::* member) const {
+        T t = Times[0].*member;
+        for (const TCipherTime& time : Times) {
+            T current = time.*member;
+            if (current < t) {
+                t = current;
+            }
+        }
+        return t;
+    }
+
+    template <class T>
+    T Max(T TCipherTime::* member) const {
+        T t = Times[0].*member;
+        for (const TCipherTime& time : Times) {
+            T current = time.*member;
+            if (current > t) {
+                t = current;
+            }
+        }
+        return t;
+    }
+
+    template <class T>
+    T Sum(T TCipherTime::* member) const {
+        T t = T();
+        for (const TCipherTime& time : Times) {
+            t += time.*member;
+        }
+        return t;
+    }
+
+    template <class T>
+    T Average(T TCipherTime::* member) const {
+        return Sum(member) / Times.size();
+    }
+
+    static double GetDouble(double d) {
+        return d;
+    }
+
+    static double GetDouble(std::chrono::microseconds d) {
+        return d.count();
+    }
+
+    template <class T>
+    double StdDev(T TCipherTime::* member) const {
+        auto avg = GetDouble(Average(member));
+        double sum = 0.0;
+        for (const TCipherTime& time : Times) {
+            auto t = time.*member;
+            double d = GetDouble(t) - avg;
+            sum += d * d;
+        }
+        return sqrt(sum / Times.size());
+    }
+
+    static std::string GetMeasurementUnit(double) {
+        return "MB/s";
+    }
+
+    static std::string GetMeasurementUnit(std::chrono::microseconds) {
+        return "us";
+    }
+
+    static double OutputValue(double d) {
+        return d;
+    }
+
+    static long OutputValue(std::chrono::microseconds d) {
+        return d.count();
+    }
+
+    template <class T>
+    void OutputStat(const std::string& name, T TCipherTime::* member) const {
+        {
+            auto min = Min(member);
+            std::cerr << name << " min (" << GetMeasurementUnit(min) << "): " << OutputValue(min) << std::endl;
+        }
+        {
+            auto max = Max(member);
+            std::cerr << name << " max (" << GetMeasurementUnit(max) << "): " << OutputValue(max) << std::endl;
+        }
+
+        {
+            auto avg = Average(member);
+            std::cerr << name << " average (" << GetMeasurementUnit(avg) << "): " << OutputValue(avg) << std::endl;
+        }
+
+        {
+            double stddev = StdDev(member);
+            std::cerr << name << " stddev: " << stddev << std::endl;
+        }
+
+        std::cerr << std::endl;
+    }
+
+    void OutputStats() const {
+        std::cerr << std::endl;
+        std::cerr << "Cipher " << CipherName << " (" << Times.size() << " times)" << std::endl;
+        OutputStat("Encryption time", &TCipherTime::EncryptionTime);
+        OutputStat("Encryption speed", &TCipherTime::EncryptionSpeedMbs);
+        OutputStat("Decryption time", &TCipherTime::DecryptionTime);
+        OutputStat("Decryption speed", &TCipherTime::DecryptionSpeedMbs);
+    }
+};
+
+TCipherTime TestCipherImpl(const TParams& opts, const std::string& cipherName, const std::vector<unsigned char>& data) {
     try {
         std::cerr << std::endl << "CipherName: \"" << cipherName << "\"" << std::endl;
 
@@ -172,12 +304,25 @@ void TestCipher(const TParams& opts, const std::string& cipherName, const std::v
         std::cerr << std::endl;
         if (compareProblem) {
             throw std::runtime_error("Results don't match");
-        } else {
-            std::cerr << "Results match" << std::endl;
         }
+
+        return TCipherTime(encMeasurer.GetDuration(), decMeasurer.GetDuration(), dataSize);
     } catch (const std::exception& ex) {
         std::cerr << "Error: " << ex.what() << std::endl;
+        throw;
     }
+}
+
+TCipherStats TestCipher(const TParams& opts, const std::string& cipherName, const std::vector<unsigned char>& data) {
+    // First time for warm up:
+    TestCipherImpl(opts, cipherName, data);
+
+    size_t count = 10;
+    TCipherStats stats(cipherName);
+    for (size_t i = 0; i < count; ++i) {
+        stats.Times.emplace_back(TestCipherImpl(opts, cipherName, data));
+    }
+    return stats;
 }
 
 int main(int argc, const char** argv) {
@@ -194,8 +339,13 @@ int main(int argc, const char** argv) {
         GenerateRandomData(data, gigabyte);
         genMeasurer.Stop(gigabyte);
 
+        std::vector<TCipherStats> stats;
         for (const std::string& cipherName : opts.CipherNames) {
-            TestCipher(opts, cipherName, data);
+            stats.emplace_back(TestCipher(opts, cipherName, data));
+        }
+
+        for (const TCipherStats& stat : stats) {
+            stat.OutputStats();
         }
 
         return 0;
